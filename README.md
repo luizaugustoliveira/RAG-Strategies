@@ -1,86 +1,100 @@
-# Os Sertões - Sistema RAG (Retrieval-Augmented Generation)
+# Os Sertões - RAG System (Retrieval-Augmented Generation)
 
-## 📖 Sobre o Projeto
+## 📖 About the Project
 
-Este projeto implementa um sistema de **RAG (Retrieval-Augmented Generation)** para análise e consulta da obra clássica "Os Sertões" de Euclides da Cunha. O sistema utiliza técnicas avançadas de processamento de linguagem natural e recuperação de informação para responder perguntas sobre a obra de forma contextualizada e precisa.
+This project implements a **RAG (Retrieval-Augmented Generation)** system for analyzing and querying the classic Brazilian literary work "Os Sertões" by Euclides da Cunha. The system uses advanced natural language processing and information retrieval techniques to answer questions about the work in a contextualized and accurate manner.
 
-## 🎯 Objetivo
+## Objective
 
-Criar um assistente inteligente capaz de responder perguntas sobre "Os Sertões" utilizando duas abordagens diferentes de RAG:
-- **Parent Document Retriever**: Recuperação hierárquica de documentos
-- **Reranker RAG**: Recuperação com reordenação de resultados usando Cohere
+Create an intelligent assistant capable of answering questions about "Os Sertões" using three different RAG approaches:
+- **Naive RAG**: Simple vector similarity retrieval
+- **Parent Document Retriever**: Hierarchical document retrieval
+- **Reranker RAG**: Retrieval with result reordering using Cohere
 
-## 🏗️ Arquitetura do Sistema
+## System Architecture
 
 ```mermaid
 graph TB
-    subgraph "Entrada de Dados"
+    subgraph "Data Input"
         PDF[os-sertoes.pdf]
     end
 
-    subgraph "Processamento de Documentos"
-        LOADER[PyPDFLoader<br/>Carrega PDF]
+    subgraph "Document Processing"
+        LOADER[PyPDFLoader<br/>Loads PDF]
         PDF --> LOADER
     end
 
-    subgraph "Abordagem 1: Parent Document RAG"
+    subgraph "Approach 1: Naive RAG"
+        NAIVE_SPLIT[RecursiveCharacterTextSplitter<br/>chunks: 4000 chars<br/>overlap: 20]
+        LOADER --> NAIVE_SPLIT
+        
+        VECTORSTORE_NAIVE[ChromaDB<br/>Vectorizes chunks]
+        NAIVE_SPLIT --> VECTORSTORE_NAIVE
+        
+        SIMPLE_RET[Simple Retriever<br/>k=3 documents]
+        VECTORSTORE_NAIVE --> SIMPLE_RET
+    end
+
+    subgraph "Approach 2: Parent Document RAG"
         PARENT_SPLIT[Parent Splitter<br/>chunks: 4000 chars<br/>overlap: 200]
         CHILD_SPLIT[Child Splitter<br/>chunks: 200 chars]
         LOADER --> PARENT_SPLIT
         PARENT_SPLIT --> CHILD_SPLIT
         
-        DOCSTORE[InMemoryByteStore<br/>Armazena documentos pai]
-        VECTORSTORE1[ChromaDB<br/>Vetoriza chunks filhos]
+        DOCSTORE[InMemoryByteStore<br/>Stores parent documents]
+        VECTORSTORE1[ChromaDB<br/>Vectorizes child chunks]
         
         CHILD_SPLIT --> VECTORSTORE1
         PARENT_SPLIT --> DOCSTORE
         
-        PARENT_RET[ParentDocumentRetriever<br/>Recupera contexto completo]
+        PARENT_RET[ParentDocumentRetriever<br/>Retrieves full context]
         VECTORSTORE1 --> PARENT_RET
         DOCSTORE --> PARENT_RET
     end
 
-    subgraph "Abordagem 2: Reranker RAG"
+    subgraph "Approach 3: Reranker RAG"
         TEXT_SPLIT[RecursiveCharacterTextSplitter<br/>chunks: 4000 chars<br/>overlap: 20]
         LOADER --> TEXT_SPLIT
         
-        VECTORSTORE2[ChromaDB<br/>Vetoriza chunks]
+        VECTORSTORE2[ChromaDB<br/>Vectorizes chunks]
         TEXT_SPLIT --> VECTORSTORE2
         
-        NAIVE_RET[Naive Retriever<br/>k=10 documentos]
+        NAIVE_RET[Naive Retriever<br/>k=10 documents]
         VECTORSTORE2 --> NAIVE_RET
         
         RERANK[CohereRerank<br/>rerank-v3.5<br/>top_n=3]
         NAIVE_RET --> RERANK
         
-        COMP_RET[ContextualCompressionRetriever<br/>Comprime e reordena]
+        COMP_RET[ContextualCompressionRetriever<br/>Compresses and reorders]
         RERANK --> COMP_RET
     end
 
-    subgraph "Embeddings e LLM"
+    subgraph "Embeddings and LLM"
         EMB[OpenAI Embeddings<br/>text-embedding-3-small]
         LLM[ChatOpenAI<br/>gpt-3.5-turbo]
         
+        EMB -.-> VECTORSTORE_NAIVE
         EMB -.-> VECTORSTORE1
         EMB -.-> VECTORSTORE2
     end
 
-    subgraph "Geração de Respostas"
-        PROMPT[Prompt Template<br/>Especialista em literatura brasileira]
+    subgraph "Response Generation"
+        PROMPT[Prompt Template<br/>Brazilian literature expert]
+        SIMPLE_RET --> PROMPT
         PARENT_RET --> PROMPT
         COMP_RET --> PROMPT
         
         PROMPT --> LLM
         LLM --> PARSER[StrOutputParser]
-        PARSER --> ANSWER[Resposta Final]
+        PARSER --> ANSWER[Final Answer]
     end
 
-    subgraph "Perguntas de Teste"
-        Q1[Visão sobre o ambiente natural]
-        Q2[Características da população sertaneja]
-        Q3[Contexto histórico da Guerra de Canudos]
-        Q4[Figura de Antônio Conselheiro]
-        Q5[Crítica social e política]
+    subgraph "Test Questions"
+        Q1[Natural environment vision]
+        Q2[Sertanejo population characteristics]
+        Q3[Canudos War historical context]
+        Q4[Antônio Conselheiro figure]
+        Q5[Social and political criticism]
         
         Q1 --> PROMPT
         Q2 --> PROMPT
@@ -90,175 +104,216 @@ graph TB
     end
 
     style PDF fill:#e1f5ff
+    style SIMPLE_RET fill:#ffe6e6
     style PARENT_RET fill:#fff4e6
     style COMP_RET fill:#f3e5f5
     style LLM fill:#e8f5e9
     style ANSWER fill:#fce4ec
 ```
 
-## 📊 Comparação das Abordagens
+## 📊 Approach Comparison
+
+### Naive RAG (`naive_rag.ipynb`)
+
+**Characteristics:**
+- **Simple Chunking**: Divides documents into 4000-character chunks with 20-character overlap
+- **Direct Retrieval**: Retrieves the 3 most similar documents based on vector similarity
+- **Advantage**: Simple, fast, and easy to implement
+- **Storage**: ChromaDB for vectors only
+
+**Flow:**
+1. Loads PDF and splits into chunks of 4000 characters
+2. Stores chunks in ChromaDB
+3. On query, retrieves the 3 most similar documents
+4. Passes context directly to the LLM
 
 ### Parent Document RAG (`parent_rag.ipynb`)
 
-**Características:**
-- **Chunking Hierárquico**: Divide documentos em chunks grandes (pais) e pequenos (filhos)
-- **Chunks Filhos**: 200 caracteres - usados para busca vetorial
-- **Chunks Pais**: 4000 caracteres com overlap de 200 - retornados como contexto
-- **Vantagem**: Busca precisa com contexto amplo
-- **Armazenamento**: InMemoryByteStore para documentos pais + ChromaDB para vetores
+**Characteristics:**
+- **Hierarchical Chunking**: Divides documents into large chunks (parents) and small chunks (children)
+- **Child Chunks**: 200 characters - used for vector search
+- **Parent Chunks**: 4000 characters with 200-character overlap - returned as context
+- **Advantage**: Precise search with broad context
+- **Storage**: InMemoryByteStore for parent documents + ChromaDB for vectors
 
-**Fluxo:**
-1. Carrega PDF e divide em páginas
-2. Cria chunks pais (4000 chars) e filhos (200 chars)
-3. Armazena chunks filhos no ChromaDB para busca vetorial
-4. Armazena chunks pais no InMemoryByteStore
-5. Na consulta, busca pelos chunks filhos mais relevantes
-6. Retorna os chunks pais correspondentes como contexto
+**Flow:**
+1. Loads PDF and splits into pages
+2. Creates parent chunks (4000 chars) and child chunks (200 chars)
+3. Stores child chunks in ChromaDB for vector search
+4. Stores parent chunks in InMemoryByteStore
+5. On query, searches for the most relevant child chunks
+6. Returns the corresponding parent chunks as context
 
 ### Reranker RAG (`reranker_rag.ipynb`)
 
-**Características:**
-- **Chunking Simples**: Divide documentos em chunks de 4000 caracteres com overlap de 20
-- **Recuperação em Duas Etapas**:
-  1. Naive Retriever: Busca os 10 documentos mais similares
-  2. Cohere Rerank: Reordena e seleciona os 3 melhores
-- **Vantagem**: Melhor precisão através de reordenação semântica
-- **Modelo de Rerank**: Cohere rerank-v3.5
+**Characteristics:**
+- **Simple Chunking**: Divides documents into 4000-character chunks with 20-character overlap
+- **Two-Stage Retrieval**:
+  1. Naive Retriever: Searches for the 10 most similar documents
+  2. Cohere Rerank: Reorders and selects the top 3
+- **Advantage**: Better precision through semantic reordering
+- **Rerank Model**: Cohere rerank-v3.5
 
-**Fluxo:**
-1. Carrega PDF e divide em chunks de 4000 caracteres
-2. Armazena chunks no ChromaDB
-3. Na consulta, recupera 10 documentos candidatos
-4. Usa Cohere Rerank para reordenar e selecionar os 3 melhores
-5. Passa contexto comprimido para o LLM
+**Flow:**
+1. Loads PDF and splits into 4000-character chunks
+2. Stores chunks in ChromaDB
+3. On query, retrieves 10 candidate documents
+4. Uses Cohere Rerank to reorder and select the top 3
+5. Passes compressed context to the LLM
 
-## 🛠️ Tecnologias Utilizadas
+## 🛠️ Technologies Used
 
-- **LangChain**: Framework para desenvolvimento de aplicações com LLMs
-- **OpenAI GPT-3.5-turbo**: Modelo de linguagem para geração de respostas
-- **OpenAI Embeddings**: Geração de embeddings vetoriais
-- **ChromaDB**: Banco de dados vetorial
-- **Cohere Rerank**: Modelo de reordenação semântica
-- **PyPDF**: Extração de texto de PDFs
-- **Python 3.12**: Linguagem de programação
+- **LangChain**: Framework for developing applications with LLMs
+- **OpenAI GPT-3.5-turbo**: Language model for response generation
+- **OpenAI Embeddings**: Vector embedding generation
+- **ChromaDB**: Vector database
+- **Cohere Rerank**: Semantic reordering model
+- **PyPDF**: PDF text extraction
+- **Python 3.12**: Programming language
 
-## 📦 Instalação
+## Installation
 
-### Pré-requisitos
+### Prerequisites
 
 ```bash
 sudo apt update
 sudo apt install python3.12-venv
 ```
 
-### Configuração do Ambiente
+### Environment Setup
 
 ```bash
-# Criar ambiente virtual
+# Create virtual environment
 python3 -m venv .venv
 
-# Ativar ambiente virtual
+# Activate virtual environment
 source .venv/bin/activate
 
-# Instalar dependências
+# Install dependencies
 pip install -r requirements.txt
 pip install ipykernel
 ```
 
-### Variáveis de Ambiente
+### Environment Variables
 
-Crie um arquivo `.env` na raiz do projeto com as seguintes chaves:
+Create a `.env` file in the project root with the following keys:
 
 ```env
-OPENAI_API_KEY=sua_chave_openai
-COHERE_API_KEY=sua_chave_cohere
+OPENAI_API_KEY=your_openai_key
+COHERE_API_KEY=your_cohere_key
 ```
 
-## 🚀 Como Usar
+## 🚀 How to Use
 
-### 1. Parent Document RAG
+### 1. Naive RAG
 
-Abra o notebook `parent_rag.ipynb` e execute as células sequencialmente:
+Open the `naive_rag.ipynb` notebook and execute the cells sequentially:
 
 ```python
-# O notebook irá:
-# 1. Carregar o PDF "os-sertoes.pdf"
-# 2. Criar o sistema de recuperação hierárquica
-# 3. Responder 5 perguntas sobre a obra
+# The notebook will:
+# 1. Load the PDF "os-sertoes.pdf"
+# 2. Create a simple retrieval system
+# 3. Answer 5 questions about the work
 ```
 
-### 2. Reranker RAG
+### 2. Parent Document RAG
 
-Abra o notebook `reranker_rag.ipynb` e execute as células sequencialmente:
+Open the `parent_rag.ipynb` notebook and execute the cells sequentially:
 
 ```python
-# O notebook irá:
-# 1. Carregar o PDF "os-sertoes.pdf"
-# 2. Criar o sistema de recuperação com reranking
-# 3. Responder as mesmas 5 perguntas para comparação
+# The notebook will:
+# 1. Load the PDF "os-sertoes.pdf"
+# 2. Create a hierarchical retrieval system
+# 3. Answer 5 questions about the work
 ```
 
-## 📝 Perguntas de Teste
+### 3. Reranker RAG
 
-O sistema foi testado com as seguintes perguntas:
+Open the `reranker_rag.ipynb` notebook and execute the cells sequentially:
 
-1. Qual é a visão de Euclides da Cunha sobre o ambiente natural do sertão nordestino e como ele influencia a vida dos habitantes?
-2. Quais são as principais características da população sertaneja descritas por Euclides da Cunha? Como ele relaciona essas características com o ambiente em que vivem?
-3. Qual foi o contexto histórico e político que levou à Guerra de Canudos, segundo Euclides da Cunha?
-4. Como Euclides da Cunha descreve a figura de Antônio Conselheiro e seu papel na Guerra de Canudos?
-5. Quais são os principais aspectos da crítica social e política presentes em "Os Sertões"? Como esses aspectos refletem a visão do autor sobre o Brasil da época?
+```python
+# The notebook will:
+# 1. Load the PDF "os-sertoes.pdf"
+# 2. Create a retrieval system with reranking
+# 3. Answer the same 5 questions for comparison
+```
 
-## 🔍 Detalhes Técnicos
+## 📝 Test Questions
 
-### Configurações do LLM
+The system was tested with the following questions:
 
-- **Modelo**: gpt-3.5-turbo
-- **Max Tokens**: 200 (Parent RAG) / 500 (Reranker RAG)
-- **Temperatura**: Padrão
+1. What is Euclides da Cunha's vision of the natural environment of the northeastern sertão and how does it influence the lives of the inhabitants?
+2. What are the main characteristics of the sertanejo population described by Euclides da Cunha? How does he relate these characteristics to the environment in which they live?
+3. What was the historical and political context that led to the Canudos War, according to Euclides da Cunha?
+4. How does Euclides da Cunha describe the figure of Antônio Conselheiro and his role in the Canudos War?
+5. What are the main aspects of social and political criticism present in "Os Sertões"? How do these aspects reflect the author's vision of Brazil at the time?
 
-### Configurações de Chunking
+## 🔍 Technical Details
+
+### LLM Configuration
+
+- **Model**: gpt-3.5-turbo
+- **Max Tokens**: 200 (Naive and Parent RAG) / 500 (Reranker RAG)
+- **Temperature**: Default
+
+### Chunking Configuration
+
+**Naive RAG:**
+- Chunks: 4000 characters, overlap 20
+- Retrieval: Top 3 documents
 
 **Parent Document RAG:**
-- Parent chunks: 4000 caracteres, overlap 200
-- Child chunks: 200 caracteres
+- Parent chunks: 4000 characters, overlap 200
+- Child chunks: 200 characters
 
 **Reranker RAG:**
-- Chunks: 4000 caracteres, overlap 20
-- Retrieval: Top 10 → Rerank para Top 3
+- Chunks: 4000 characters, overlap 20
+- Retrieval: Top 10 → Rerank to Top 3
 
-## 📄 Estrutura do Projeto
+## 📄 Project Structure
 
 ```
 Os-Sertoes-RAG/
-├── os-sertoes.pdf           # Documento fonte
-├── parent_rag.ipynb         # Implementação Parent Document RAG
-├── reranker_rag.ipynb       # Implementação Reranker RAG
-├── requirements.txt         # Dependências do projeto
-├── makefile                 # Comandos de instalação
-├── .env                     # Variáveis de ambiente (não versionado)
-├── LICENSE                  # Licença do projeto
-└── README.md               # Este arquivo
+├── os-sertoes.pdf           # Source document
+├── naive_rag.ipynb          # Naive RAG implementation
+├── parent_rag.ipynb         # Parent Document RAG implementation
+├── reranker_rag.ipynb       # Reranker RAG implementation
+├── requirements.txt         # Project dependencies
+├── makefile                 # Installation commands
+├── .env                     # Environment variables (not versioned)
+├── LICENSE                  # Project license
+└── README.md               # This file
 ```
 
-## 🎓 Conceitos Aplicados
+## 🎓 Applied Concepts
 
-- **RAG (Retrieval-Augmented Generation)**: Técnica que combina recuperação de informação com geração de texto
-- **Embeddings**: Representação vetorial de texto para busca semântica
-- **Chunking**: Divisão de documentos em partes menores para processamento
-- **Reranking**: Reordenação de resultados para melhorar relevância
-- **Vector Database**: Armazenamento e busca eficiente de embeddings
+- **RAG (Retrieval-Augmented Generation)**: Technique that combines information retrieval with text generation
+- **Embeddings**: Vector representation of text for semantic search
+- **Chunking**: Division of documents into smaller parts for processing
+- **Reranking**: Reordering of results to improve relevance
+- **Vector Database**: Efficient storage and search of embeddings
+- **Hierarchical Retrieval**: Multi-level document retrieval strategy
 
-## 📊 Resultados
+## 📊 Results
 
-Ambas as abordagens foram capazes de responder às perguntas com contexto relevante da obra "Os Sertões". A escolha entre elas depende do caso de uso:
+All three approaches were able to answer the questions with relevant context from "Os Sertões". The choice between them depends on the use case:
 
-- **Parent Document RAG**: Melhor para contextos mais amplos e respostas detalhadas
-- **Reranker RAG**: Melhor para precisão e relevância máxima com contexto focado
+- **Naive RAG**: Best for simple use cases, fast responses, and when computational resources are limited
+- **Parent Document RAG**: Best for broader contexts and detailed answers with precise retrieval
+- **Reranker RAG**: Best for maximum precision and relevance with focused context
 
-## 📜 Licença
+## 🔬 Performance Comparison
 
-Este projeto está sob a licença especificada no arquivo LICENSE.
+| Approach | Retrieval Speed | Context Quality | Precision | Complexity |
+|----------|----------------|-----------------|-----------|------------|
+| Naive RAG | ⚡⚡⚡ Fast | ⭐⭐ Good | ⭐⭐ Good | 🔧 Low |
+| Parent Document RAG | ⚡⚡ Medium | ⭐⭐⭐ Excellent | ⭐⭐⭐ Excellent | 🔧🔧 Medium |
+| Reranker RAG | ⚡ Slower | ⭐⭐⭐ Excellent | ⭐⭐⭐⭐ Outstanding | 🔧🔧🔧 High |
 
-## 🤝 Contribuições
+## 📜 License
 
-Contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou pull requests.
+This project is licensed under the terms specified in the LICENSE file.
+
+## 🤝 Contributions
+
+Contributions are welcome! Feel free to open issues or pull requests.
